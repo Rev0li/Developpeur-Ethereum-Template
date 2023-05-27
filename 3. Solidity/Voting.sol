@@ -40,27 +40,12 @@ contract Voting is Ownable {
 
     WorkflowStatus public currentWorkflowStatus;
 
-    constructor() {
-        currentWorkflowStatus = WorkflowStatus.RegisteringVoters;
-    }
-
     modifier checkRegistered(address _address) {
         require(!voters[_address].isRegistered, "You are not whitelisted");
         _;
     }
 
-    modifier registrationIsOpen() {
-        require(
-            (currentWorkflowStatus ==
-                WorkflowStatus.ProposalsRegistrationStarted) &&
-                (currentWorkflowStatus !=
-                    WorkflowStatus.ProposalsRegistrationEnded),
-            "Registration is not open"
-        );
-        _;
-    }
-
-    // L'administrateur du vote enregistre une liste blanche d'électeurs identifiés par leur adresse Ethereum.
+    // Admin setWhitelist
     function whitelisted(address _address) public onlyOwner {
         require(!voters[_address].isRegistered, "deja whiteliste");
         voters[_address].isRegistered = true;
@@ -74,8 +59,26 @@ contract Voting is Ownable {
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
+    // Emettre une proposition
+    function addPropose(
+        string memory _description
+    ) public checkRegistered(msg.sender) {
+        require(
+            currentWorkflowStatus ==
+                WorkflowStatus.ProposalsRegistrationStarted,
+            "Registration proposal is not open"
+        );
+        uint proposalId = proposals.length;
+        Proposal memory myProposal;
+        myProposal.description = _description;
+        myProposal.voteCount = 0;
+        proposals.push(myProposal);
+        emit ProposalRegistered(proposalId);
+    }
+
     // Admin stop les propositions
     function endProposition() public onlyOwner {
+        require(proposals.length > 0, "No proposal");
         WorkflowStatus oldStatus = currentWorkflowStatus;
         currentWorkflowStatus = WorkflowStatus.ProposalsRegistrationEnded;
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
@@ -88,6 +91,30 @@ contract Voting is Ownable {
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
+    // See all proposals
+    function seeAllProposal()
+        public
+        view
+        checkRegistered(msg.sender)
+        returns (Proposal[] memory)
+    {
+        return proposals;
+    }
+
+    // Voter pour la proposition prefere
+    function addVote(uint proposalId) public checkRegistered(msg.sender) {
+        require(
+            currentWorkflowStatus == WorkflowStatus.VotingSessionStarted,
+            "Voting is not open"
+        );
+        require(!voters[msg.sender].hasVoted, "You have already voted");
+        voters[msg.sender].hasVoted = true;
+        voters[msg.sender].votedProposalId = proposalId;
+        proposals[proposalId].voteCount++;
+
+        emit Voted(msg.sender, proposalId);
+    }
+
     // Admin stop les Votes
     function endVote() public onlyOwner {
         WorkflowStatus oldStatus = currentWorkflowStatus;
@@ -95,55 +122,55 @@ contract Voting is Ownable {
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
-    // Emettre une proposition
-    function emitProposition(
-        string memory _description,
-        uint _Id
-    ) public checkRegistered(msg.sender) {
-        Proposal memory newProposal = Proposal(_description, (0));
-        proposals.push(newProposal);
-        emit ProposalRegistered(_Id);
+    // L'admin comptabilise les votes.
+    function nbVote() public onlyOwner returns (uint) {
+        require(
+            currentWorkflowStatus == WorkflowStatus.VotingSessionEnded,
+            "Vote is not close"
+        );
+
+        uint totalVoteCount = 0;
+        for (uint i = 0; i < proposals.length; i++) {
+            totalVoteCount += proposals[i].voteCount;
+        }
+
+        WorkflowStatus oldStatus = currentWorkflowStatus;
+        currentWorkflowStatus = WorkflowStatus.VotesTallied;
+        emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
+
+        return totalVoteCount;
     }
 
-    // Function pour comptaliser les votes et changer status VotingSessionEnded
-    function comptabiliserVote() public {
-        WorkflowStatus oldStatus = currentWorkflowStatus;
-        currentWorkflowStatus = WorkflowStatus.VotingSessionEnded;
-        emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
+    // Recuparation du winner
+    function getWinner() public view returns (uint) {
+        require(
+            currentWorkflowStatus == WorkflowStatus.VotesTallied,
+            "Vote is not tallied"
+        );
+
+        uint maxVoteCount = 0;
+        uint winnerProposalId;
+
+        for (uint i = 0; i < proposals.length; i++) {
+            if (proposals[i].voteCount > maxVoteCount) {
+                maxVoteCount = proposals[i].voteCount;
+                winnerProposalId = i;
+            }
+        }
+        return winnerProposalId;
+    }
+
+    // Recup detail Winner
+    function readDetailWinner(
+        uint proposalId
+    ) public view checkRegistered(msg.sender) returns (Proposal memory) {
+        require(proposalId < proposals.length, "Invalid proposal ID");
+        return proposals[proposalId];
     }
 }
 
-// L'administrateur du vote commence la session de vote.
-//"function onlyOwner qui change l'état de WorkflowStatus avec VotingSessionStarted  "
-
-// Les électeurs inscrits votent pour leur proposition préférée.
-//"function public qui demande l'id de leur proposition preferee "
-
-// L'administrateur du vote met fin à la session de vote.
-//"fonction onlyOwner qui change l'état de WorkflowStatus avec VotingSessionEnded"
-
-// L'administrateur du vote comptabilise les votes.
-//"fonction onlyOwner pour ajouter dans un tableau le nombre de votes => proposition"
-
-//Votre smart contract doit définir un uint winningProposalId qui représente l’id du gagnant ou une fonction getWinner qui retourne le gagnant.
-//"function getWinner public, qui retourne le gagnant (address,id proposition, nombre de vote, description), WorkflowStatus => VotesTallied "
-
-// Tout le monde peut vérifier les derniers détails de la proposition gagnante.
-//"fonction public qui permet de read la description de la proposition gragnant"
-
-//     contract Admin is Ownable{
-
-// 	mapping(address=> bool) whitelist;
-
-// 	event Authorized(address _address);
-
-// 	function authorized(address _addressW) public onlyOwner {
-//         require(!whitelist[_addressW], "deja whiteliste");
-//         whitelist[_addressW] = true;
-// 	}
-
-//     function isWhitelist(address _addr) public view returns(bool) {
-//     return whitelist[_addr];
-//     }
-
-// }
+// 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2
+// 0x4B20993Bc481177ec7E8f571ceCaE8A9e22C02db
+// 0x78731D3Ca6b7E34aC0F824c42a7cC18A495cabaB
+// 0x617F2E2fD72FD9D5503197092aC168c91465E7f2
+// 0x17F6AD8Ef982297579C203069C1DbfFE4348c372
