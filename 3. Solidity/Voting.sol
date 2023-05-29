@@ -4,7 +4,6 @@ pragma solidity 0.8.20;
 import "https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/Ownable.sol";
 
 contract Voting is Ownable {
-    //Votre smart contract doit définir les structures de données suivantes :
     struct Voter {
         bool isRegistered;
         bool hasVoted;
@@ -15,7 +14,6 @@ contract Voting is Ownable {
         uint voteCount;
     }
 
-    //Votre smart contract doit définir une énumération qui gère les différents états d’un vote
     enum WorkflowStatus {
         RegisteringVoters,
         ProposalsRegistrationStarted,
@@ -25,7 +23,6 @@ contract Voting is Ownable {
         VotesTallied
     }
 
-    //Votre smart contract doit définir les événements suivants :
     event VoterRegistered(address voterAddress);
     event WorkflowStatusChange(
         WorkflowStatus previousStatus,
@@ -39,28 +36,37 @@ contract Voting is Ownable {
     Proposal[] proposals;
 
     WorkflowStatus public currentWorkflowStatus;
+    uint public voterCount;
+    uint public winnerProposalId;
 
     modifier checkRegistered(address _address) {
-        require(!voters[_address].isRegistered, "You are not whitelisted");
+        require(voters[_address].isRegistered, "You are not whitelisted");
         _;
     }
 
     // Admin setWhitelist
     function whitelisted(address _address) public onlyOwner {
         require(!voters[_address].isRegistered, "deja whiteliste");
+
         voters[_address].isRegistered = true;
+        voterCount++;
+
         emit VoterRegistered(_address);
     }
 
-    // Admin start les propositions
+    // Admin opens proposals
     function startProposition() public onlyOwner {
+        //Bonus (j'ai trouvé ca logique)
+        require(voterCount >= 3, "Minimum of 3 registrations required");
+
         WorkflowStatus oldStatus = currentWorkflowStatus;
         currentWorkflowStatus = WorkflowStatus.ProposalsRegistrationStarted;
+
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
-    // Emettre une proposition
-    function addPropose(
+    // Commit your proposal
+    function addProposal(
         string memory _description
     ) public checkRegistered(msg.sender) {
         require(
@@ -78,30 +84,48 @@ contract Voting is Ownable {
 
     // Admin stop les propositions
     function endProposition() public onlyOwner {
+        require(
+            currentWorkflowStatus == WorkflowStatus.ProposalsRegistrationStarted
+        );
+
         require(proposals.length > 0, "No proposal");
+
         WorkflowStatus oldStatus = currentWorkflowStatus;
         currentWorkflowStatus = WorkflowStatus.ProposalsRegistrationEnded;
+
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
     // Admin start les Votes
     function startVote() public onlyOwner {
+        require(
+            currentWorkflowStatus == WorkflowStatus.ProposalsRegistrationEnded
+        );
+
         WorkflowStatus oldStatus = currentWorkflowStatus;
         currentWorkflowStatus = WorkflowStatus.VotingSessionStarted;
+
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
-    // See all proposals
-    function seeAllProposal()
+    // Recovery all proposals
+    function getAllProposalDetails()
         public
         view
-        checkRegistered(msg.sender)
-        returns (Proposal[] memory)
+        returns (uint[] memory, string[] memory)
     {
-        return proposals;
+        uint[] memory indices = new uint[](proposals.length);
+        string[] memory descriptions = new string[](proposals.length);
+
+        for (uint i = 0; i < proposals.length; i++) {
+            indices[i] = i;
+            descriptions[i] = proposals[i].description;
+        }
+
+        return (indices, descriptions);
     }
 
-    // Voter pour la proposition prefere
+    // Voting for the best proposal
     function addVote(uint proposalId) public checkRegistered(msg.sender) {
         require(
             currentWorkflowStatus == WorkflowStatus.VotingSessionStarted,
@@ -115,14 +139,14 @@ contract Voting is Ownable {
         emit Voted(msg.sender, proposalId);
     }
 
-    // Admin stop les Votes
+    // The Admin stop the Votes
     function endVote() public onlyOwner {
         WorkflowStatus oldStatus = currentWorkflowStatus;
         currentWorkflowStatus = WorkflowStatus.VotingSessionEnded;
         emit WorkflowStatusChange(oldStatus, currentWorkflowStatus);
     }
 
-    // L'admin comptabilise les votes.
+    // The Admin counts the votes
     function nbVote() public onlyOwner returns (uint) {
         require(
             currentWorkflowStatus == WorkflowStatus.VotingSessionEnded,
@@ -141,15 +165,14 @@ contract Voting is Ownable {
         return totalVoteCount;
     }
 
-    // Recuparation du winner
-    function getWinner() public view returns (uint) {
+    // Recovery of winner
+    function getWinner() public returns (uint) {
         require(
             currentWorkflowStatus == WorkflowStatus.VotesTallied,
             "Vote is not tallied"
         );
 
         uint maxVoteCount = 0;
-        uint winnerProposalId;
 
         for (uint i = 0; i < proposals.length; i++) {
             if (proposals[i].voteCount > maxVoteCount) {
@@ -160,12 +183,12 @@ contract Voting is Ownable {
         return winnerProposalId;
     }
 
-    // Recup detail Winner
+    // Recovery of winner's details
     function readDetailWinner(
-        uint proposalId
+        uint _winnerId
     ) public view checkRegistered(msg.sender) returns (Proposal memory) {
-        require(proposalId < proposals.length, "Invalid proposal ID");
-        return proposals[proposalId];
+        _winnerId = winnerProposalId;
+        return proposals[_winnerId];
     }
 }
 
