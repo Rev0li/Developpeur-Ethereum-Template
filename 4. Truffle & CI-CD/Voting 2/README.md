@@ -1,6 +1,8 @@
 Les tests sont organisés en plusieurs groupes afin de couvrir les différentes fonctionnalités du contrat "Voting".
 J'ai un test de 100% sur l'ensemble du test.
 
+[![image.png](https://i.postimg.cc/Vk90PMXH/image.png)](https://postimg.cc/K1z8n1qn)
+
 ### REGISTRATION
 
 Ce groupe de tests concerne les fonctions `addVoter` et `getVoter`.
